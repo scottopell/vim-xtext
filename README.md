@@ -1,4 +1,9 @@
 # Vim Xtext
+Generates a vim plugin from a given xtext language giving
+- validation
+- code completion
+- code formatting
+- (basic) syntax highlighting
 
 ## Usage:
 Edit the mwe2 file for your language to include a segment like this:
@@ -8,9 +13,8 @@ fragment = GenerateVim {
   override = true
 }
 ```
-
 and then add the `GenerateVim.xtend` file from this repo alongside your mwe2
-file.
+generator file.
 
 
 You can find the vim plugin at the path you specified above and from here you
@@ -36,12 +40,13 @@ installed then it will also show you errors inline as you edit your file
 
 ### Completion
 This gives you the capability to get intellisense style suggestions at any point
-with the standard omnifunc completion (`:help complete`). Activate it at any
-point by hitting ctrl-p ctrl-n (ctrl + p followed quickly by ctrl-n) and you'll
-get a list of suggestions to choose from.
+with the standard omnifunc completion (`:help complete`).
+
+Activate it at any point by hitting `ctrl-p ctrl-n` (ctrl + p followed quickly by
+ctrl-n) and you'll get a list of suggestions to choose from.
 
 ### Formatting
-This sets both the indentprg and formatprg to a code formatter, so you can use
+This sets both the `indentprg` and `formatprg` to a code formatter, so you can use
 either the `=` key or the code formatting (<motion>q) hotkeys.
 
 
