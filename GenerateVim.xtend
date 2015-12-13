@@ -23,6 +23,7 @@ import org.eclipse.xtext.xtext.generator.AbstractXtextGeneratorFragment
 import org.eclipse.xtext.xtext.generator.model.IXtextGeneratorFileSystemAccess
 import org.eclipse.xtext.xtext.generator.model.XtextGeneratorFileSystemAccess
 import org.eclipse.xtext.xtext.generator.parser.antlr.AntlrGrammarGenUtil
+import java.util.HashSet
 
 class GenerateVim extends AbstractXtextGeneratorFragment {
 
@@ -136,13 +137,16 @@ class GenerateVim extends AbstractXtextGeneratorFragment {
 
     var keywords = GrammarUtil.getAllKeywords(grammar).join(" ")
 
-    /*
-    var syntax = '''
-    «collectTerminalsAsRegex(grammarName)»
-    '''*/
+
+    // TODO
+    var extra = '''
+    «/*collectTerminalsAsVimRules(grammarName)*/»
+    '''
 
     var syntax = '''
     syntax keyword «grammarName»Keyword «keywords»
+
+    «extra»
 
     highlight link «grammarName»Keyword Keyword
 
@@ -304,23 +308,43 @@ class GenerateVim extends AbstractXtextGeneratorFragment {
   }
 
 
-  def String collectTerminalsAsRegex(String grammarName) {
-    var creator = new TerminalRuleToRegEx(grammarName)
+  def String collectTerminalsAsVimRules(String grammarName) {
     var terminals = GrammarUtil.allTerminalRules(grammar)
+    var result = new StringBuilder()
+    var mappingsNeeded = new HashSet()
 
     for (TerminalRule rule: terminals){
-      creator.build(rule)
-      println(rule)
-      switch(rule.name){
-        case("org.eclipse.xtext.common.Terminals.ID"): {
+      val regex = "\"\\v" + TerminalRuleToRegEx.toRegEx(rule) + "\""
 
-        }
+      if (rule.name.toLowerCase().contains("ID")){
+        result.append('''syntax match «grammarName»Identifier «regex»''').append("\n")
+        mappingsNeeded.add("identifier")
+      } else if (rule.name.toLowerCase().contains("comment")){
+        result.append('''syntax match «grammarName»Comment «regex»''').append("\n")
+        mappingsNeeded.add("comment");
+      } else if (rule.name.toLowerCase().contains("boolean")){
+        result.append('''syntax match «grammarName»Boolean «regex»''').append("\n")
+        mappingsNeeded.add("boolean");
+      } else if (rule.name.toLowerCase().contains("constant")){
+        result.append('''syntax match «grammarName»Constant «regex»''').append("\n")
+        mappingsNeeded.add("constant");
       }
-      GrammarUtil.findRuleForName(getGrammar(), "org.eclipse.xtext.common.Terminals.ID");
+
     }
 
-    return creator.finish()
+    for (String mapping: mappingsNeeded){
+      if (mapping.equals("identifier")){
+        result.append('''highlight link «grammarName»Identifier Identifier''').append("\n")
+      } else if (mapping.equals("comment")){
+        result.append('''highlight link «grammarName»Comment Comment''').append("\n")
+      } else if (mapping.equals("boolean")){
+        result.append('''highlight link «grammarName»Boolean Boolean''').append("\n")
+      } else if (mapping.equals("comment")){
+        result.append('''highlight link «grammarName»Boolean Boolean''').append("\n")
+      }
+    }
 
+    return result.toString()
   }
 
   protected def getOutputLocation() {
@@ -372,13 +396,13 @@ class GenerateVim extends AbstractXtextGeneratorFragment {
   // Oh and make sure that the regexes produced are all prefixed with verymagic
 class TerminalRuleToRegEx extends XtextSwitch<String> {
   final StringBuilder result
-  TerminalRule[] rulesUsed
-  String prefix
 
-  public new(String prefix) {
+  private new(){
     this.result = new StringBuilder()
-    this.rulesUsed = #[]
-    this.prefix = prefix
+  }
+
+  def static String toRegEx(TerminalRule rule) {
+    return new TerminalRuleToRegEx().print(rule)
   }
 
   def String print(TerminalRule rule) {
@@ -386,27 +410,17 @@ class TerminalRuleToRegEx extends XtextSwitch<String> {
     return result.toString()
   }
 
-  def void build(TerminalRule rule){
-    doSwitch(rule.getAlternatives())
-  }
-  def String finish(){
-    // add used rules as `highlight link <MyName> <VimName>` here
-    var usedString = rulesUsed.map[
-      '''highlight link «prefix»Name Name'''
-    ].join("\n")
-
-
-    return result.append(usedString).toString()
-  }
-
   // see vim's help docs for details on what very magic is
   // basically very magic (\v) is as close as vim gets to perl regex
   // :help magic
   def static private String veryMagicEscape(String str){
     return str
-      .replaceAll("\\\\", "\\\\\\\\") // replaces single backslash with double backslash
+      .replaceAll("\\n", "\\\\n") //replaces a newline with \n
+      .replaceAll("\\r\\n", "\\\\r\\\\n") // replaces newline carriage return with \r\n
       .replaceAll(".", "\\.") // the only sane one here
       .replaceAll("\\{", "\\\\{") // replaces a left curly with backslash left curly
+      .replaceAll("\\\\", "\\\\\\\\") // replaces single backslash with double backslash
+
   }
 
 
@@ -439,7 +453,7 @@ class TerminalRuleToRegEx extends XtextSwitch<String> {
     if (!Strings.isEmpty(object.getCardinality())) result.append(Character.valueOf('(').charValue)
     var boolean first=true
     for (AbstractElement elem : object.getElements()) {
-      if (!first) result.append(Character.valueOf(' ').charValue)
+      if (!first) result.append(Character.valueOf('|').charValue)
       first=false
       doSwitch(elem)
     }
@@ -448,9 +462,8 @@ class TerminalRuleToRegEx extends XtextSwitch<String> {
     return ""
   }
   override String caseKeyword(Keyword object) {
-    result.append("'")
     var String value = veryMagicEscape(object.value)
-    result.append(value).append("'")
+    result.append(value)
     result.append(Strings.emptyIfNull(object.getCardinality()))
     return ""
   }
