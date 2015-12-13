@@ -42,12 +42,12 @@ installed then it will also show you errors inline as you edit your file
 This gives you the capability to get intellisense style suggestions at any point
 with the standard omnifunc completion (`:help complete`).
 
-Activate it at any point by hitting `ctrl-p ctrl-n` (ctrl + p followed quickly by
-ctrl-n) and you'll get a list of suggestions to choose from.
+Activate it at any point by hitting `ctrl-x ctrl-o` (ctrl + x followed quickly by
+ctrl-o) and you'll get a list of suggestions to choose from.
 
 ### Formatting
 This sets both the `indentprg` and `formatprg` to a code formatter, so you can use
-either the `=` key or the code formatting (<motion>q) hotkeys.
+either the `=` key or the code formatting (\<motion\>q) hotkeys.
 
 
 ## Output
