@@ -1,18 +1,28 @@
-package org.xtext.example.mydsl2
+package org.xtext.example.mydsl3
 
 import com.google.inject.Injector
+import org.eclipse.emf.ecore.EObject
+import org.eclipse.emf.mwe2.runtime.Mandatory
 import org.eclipse.xtend.lib.annotations.Accessors
+import org.eclipse.xtext.AbstractElement
+import org.eclipse.xtext.Alternatives
+import org.eclipse.xtext.CharacterRange
+import org.eclipse.xtext.EOF
+import org.eclipse.xtext.GrammarUtil
+import org.eclipse.xtext.Group
+import org.eclipse.xtext.Keyword
+import org.eclipse.xtext.NegatedToken
+import org.eclipse.xtext.ParserRule
+import org.eclipse.xtext.RuleCall
+import org.eclipse.xtext.TerminalRule
+import org.eclipse.xtext.UntilToken
+import org.eclipse.xtext.Wildcard
+import org.eclipse.xtext.util.Strings
+import org.eclipse.xtext.util.XtextSwitch
 import org.eclipse.xtext.xtext.generator.AbstractXtextGeneratorFragment
 import org.eclipse.xtext.xtext.generator.model.IXtextGeneratorFileSystemAccess
 import org.eclipse.xtext.xtext.generator.model.XtextGeneratorFileSystemAccess
-import org.eclipse.emf.mwe2.runtime.Mandatory
-import org.eclipse.xtext.GrammarUtil
-import org.eclipse.xtext.*
-import org.eclipse.xtext.util.XtextSwitch
-import org.eclipse.xtext.util.Strings
-import org.eclipse.emf.ecore.EObject
 import org.eclipse.xtext.xtext.generator.parser.antlr.AntlrGrammarGenUtil
-import org.eclipse.xtext.common.services.TerminalsGrammarAccess
 
 class GenerateVim extends AbstractXtextGeneratorFragment {
 
@@ -29,6 +39,8 @@ class GenerateVim extends AbstractXtextGeneratorFragment {
 
       val grammarName = GrammarUtil.getSimpleName(grammar)
 
+      val resourceName = language.fileExtensions.get(0)
+
     val ftAccess = language.fileExtensions.map[ ext |
       '''au BufNewFile,BufRead *.«ext» set filetype=«grammarName»'''
     ].join("\n")
@@ -41,17 +53,17 @@ class GenerateVim extends AbstractXtextGeneratorFragment {
 
     function! «grammarName»#GetValidatorExePath()
       " http://superuser.com/questions/119991/how-do-i-get-vim-home-directory
-      let $VIMHOME=expand('<sfile>:p:h:h')
+      let $VIMHOME=expand('<sfile>:p:h')
       return escape('./' . findfile('validator.rb', $VIMHOME.';'), ' \')
     endfunction
 
     function! «grammarName»#GetCompleterExePath()
-      let $VIMHOME=expand('<sfile>:p:h:h')
-      return escape('./' . findfile('complete.rb', $VIMHOME.';'), ' \')
+      let $VIMHOME=expand('<sfile>:p:h')
+      return escape('./' . findfile('completer.rb', $VIMHOME.';'), ' \')
     endfunction
 
     function! «grammarName»#GetFormatterExePath()
-      let $VIMHOME=expand('<sfile>:p:h:h')
+      let $VIMHOME=expand('<sfile>:p:h')
       return escape('./' . findfile('formatter.rb', $VIMHOME.';'), ' \')
     endfunction
 
@@ -72,7 +84,7 @@ class GenerateVim extends AbstractXtextGeneratorFragment {
 
         " line2byte(line('.')) gives the number of bytes in the buffer up until
         " this point. This is the place that the base needs to be inserted at
-        let l:byte_index = line2byte(line('.'))
+        let l:byte_index = line2byte(line('.')) - 1
         let l:completion_point = l:byte_index + len(a:base)
         let l:full_file_contents = strpart(l:file_contents, 0, l:byte_index).a:base.(strpart(l:file_contents, l:byte_index))
 
@@ -113,8 +125,8 @@ class GenerateVim extends AbstractXtextGeneratorFragment {
 
     var ftplugin = '''
     setlocal omnifunc=«grammarName»#Complete
-    setlocal equalprg=«grammarName»#GetValidatorExePath()
-    setlocal formatprg=«grammarName»#GetValidatorExePath()
+    setlocal equalprg=./formatter.rb
+    setlocal formatprg=./formatter.rb
 
     compiler «grammarName»
     '''
@@ -179,122 +191,112 @@ class GenerateVim extends AbstractXtextGeneratorFragment {
     outputLocation.generateFile('''syntax_checkers/«grammarName»/«grammarName».vim''', syntastic)
 
     var completer = '''
-    #!/usr/bin/ruby
-    require 'JSON'
-    require 'stringio'
-    require 'uri'
-    require 'net/http'
+      #!/usr/bin/ruby
+      require 'JSON'
+      require 'stringio'
+      require 'uri'
+      require 'net/http'
 
 
-    file_contents = ''
-    stdin_present = false
-    if STDIN.tty?
-      file_contents = IO.read ARGF.argv[0]
-    else
-      file_contents = $stdin.read
-      stdin_present = true
-    end
-
-    file_offset = 0
-
-    num_args = ARGF.argv.length
-    arg_offset = stdin_present ? -1 : 0
-
-    if ARGF.argv.length == 3 || (stdin_present && num_args == 2)
-      target_line = ARGF.argv[1 + arg_offset].to_i
-      target_offset = ARGF.argv[2 + arg_offset].to_i
-
-      # $/ is a ruby builtin that gets you the current system's line separator
-      file_contents.split($/).each.with_index do |line, num|
-        if (num + 1) == target_line
-          file_offset += target_offset
-          break
-        end
-        file_offset += line.length + $/.length
+      file_contents = ''
+      stdin_present = false
+      if STDIN.tty?
+        file_contents = IO.read ARGF.argv[0]
+      else
+        file_contents = $stdin.read
+        stdin_present = true
       end
-    elsif ARGF.argv.length == 2 || (stdin_present && num_args == 1)
-      file_offset = ARGF.argv[1 + arg_offset].to_i
-    else
-      puts "Usage:\n ./complete.rb <filepath> (<char offset>)|(<line> <column>)"
-      puts "OR\n cat <filepath> | ./complete.rb (<char offset>)|(<line> <column>)"
-      exit
-    end
 
+      file_offset = 0
 
-    uri = URI.parse 'http://localhost:8080'
-    req = Net::HTTP::Post.new 'http://localhost:8080/xtext-service/assist'
+      num_args = ARGF.argv.length
+      arg_offset = stdin_present ? -1 : 0
 
-    req.set_form_data resource: '«grammar.getName»',
-      caretOffset: file_offset,
-      full_text: URI.escape(file_contents)
+      if ARGF.argv.length == 3 || (stdin_present && num_args == 2)
+        target_line = ARGF.argv[1 + arg_offset].to_i
+        target_offset = ARGF.argv[2 + arg_offset].to_i
 
-    res = Net::HTTP.new(uri.host, uri.port).start { |http| http.request(req) }
+        # $/ is a ruby builtin that gets you the current system's line separator
+        file_contents.split($/).each.with_index do |line, num|
+          if (num + 1) == target_line
+            file_offset += target_offset
+            break
+          end
+          file_offset += line.length + $/.length
+        end
+      elsif ARGF.argv.length == 2 || (stdin_present && num_args == 1)
+        file_offset = ARGF.argv[1 + arg_offset].to_i
+      else
+        puts "Usage:\n ./complete.rb <filepath> (<char offset>)|(<line> <column>)"
+        puts "OR\n cat <filepath> | ./complete.rb (<char offset>)|(<line> <column>)"
+        exit
+      end
 
-    json = JSON.parse res.body
+      params_str = "?resource=text.«resourceName»"
+      params_str += "&fullText=#{URI.escape(file_contents)}"
+      params_str += "&caretOffset=#{file_offset}"
 
-    s = StringIO.new
-    json['entries'].each do |entry|
-      s << entry['proposal']
-      s << "\n"
-    end
-    puts s.string
+      uri = URI.parse "http://localhost:8080/xtext-service/assist#{params_str}"
+      res = Net::HTTP.post_form uri, {}
+
+      json = JSON.parse res.body
+
+      s = StringIO.new
+      json['entries'].each do |entry|
+        s << entry['proposal']
+        s << "\n"
+      end
+      puts s.string
     '''
 
     outputLocation.generateFile("completer.rb", completer)
 
     var validator = '''
-    #!/usr/bin/ruby
-    require 'JSON'
-    require 'stringio'
-    require 'uri'
-    require 'net/http'
+      #!/usr/bin/ruby
+      require 'JSON'
+      require 'stringio'
+      require 'uri'
+      require 'net/http'
 
-    file_contents = IO.read ARGF.argv[0]
+      file_contents = IO.read ARGF.argv[0]
 
-    uri = URI.parse 'http://localhost:8080'
-    req = Net::HTTP::Post.new 'http://localhost:8080/xtext-service/validate'
+      params_str = "?resource=text.«resourceName»&fullText=#{URI.escape(file_contents)}"
+      uri = URI.parse "http://localhost:8080/xtext-service/validate#{params_str}"
+      res = Net::HTTP.post_form uri, {}
 
-    req.set_form_data resource: '«grammar.getName»',
-      full_text: URI.escape(file_contents)
-
-    res = Net::HTTP.new(uri.host, uri.port).start { |http| http.request(req) }
-
-    json = JSON.parse res.body
+      json = JSON.parse res.body
 
 
-    s = StringIO.new
-    json['issues'].each do |issue|
-      s<< ARGF.argv[0]
-      s << ': '
-      s << issue['line']
-      s << ': '
-      s << issue['description']
-      s << "\n"
-    end
-    puts s.string
+      s = StringIO.new
+      json['issues'].each do |issue|
+        s<< ARGF.argv[0]
+        s << ': '
+        s << issue['line']
+        s << ': '
+        s << issue['description']
+        s << "\n"
+      end
+      puts s.string
     '''
 
     outputLocation.generateFile("validator.rb", validator)
 
     var formatter = '''
-    #!/usr/bin/ruby
-    require 'JSON'
-    require 'stringio'
-    require 'uri'
-    require 'net/http'
+      #!/usr/bin/ruby
+      require 'JSON'
+      require 'stringio'
+      require 'uri'
+      require 'net/http'
 
-    file_contents = $stdin.read
+      file_contents = $stdin.read
 
-    uri = URI.parse 'http://localhost:8080'
-    req = Net::HTTP::Post.new 'http://localhost:8080/xtext-service/format'
+      params_str = "?resource=text.«resourceName»&fullText=#{URI.escape(file_contents)}"
+      uri = URI.parse "http://localhost:8080/xtext-service/format#{params_str}"
+      res = Net::HTTP.post_form uri, {}
 
-    req.set_form_data resource: '«grammar.getName»',
-      full_text: URI.escape(file_contents)
+      json = JSON.parse res.body
 
-    res = Net::HTTP.new(uri.host, uri.port).start { |http| http.request(req) }
-    json = JSON.parse res.body
-
-    puts json['formattedText']
+      puts json['formattedText']
     '''
 
     outputLocation.generateFile("formatter.rb", formatter)
@@ -486,3 +488,4 @@ class TerminalRuleToRegEx extends XtextSwitch<String> {
     return ""
   }
 }
+
