@@ -16,16 +16,23 @@ fragment = GenerateVim {
 and then add the `GenerateVim.xtend` file from this repo alongside your mwe2
 generator file.
 
+One step that needs to be done manually (for now) is chmod'ing the 3 ruby files
+that get generated so they can be run with the vim `system` call.
 
-You can find the vim plugin at the path you specified above and from here you
-can either copy it into your `.vim` folder or you can put it in your `code`
-folder (or any arbitrary location) and then link to it with a package manager
-(recommended.)
+Simply `cd` to the directory where you generated your plugin to and then run
+`chmod +x *.rb`
 
-For instructions on adding a local vim plugin, see your plugin manager's
-documentation (vundle, plug, pathogen etc.)
+Now add this folder as a vim plugin via your plugin manager.
 
-For Plug you'd do something like this:
+Common plugin managers are:
+- Vundle
+- Pathogen
+- Plug
+
+For instructions on adding a local directory as a vim plugin, see your plugin
+manager's documentation.
+
+For Plug you'd add something like this to your `~/.vimrc`
 ```vim
 Plug '~/code/FOA/vim-statemachine'
 ```
